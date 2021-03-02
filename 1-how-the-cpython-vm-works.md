@@ -1,3 +1,6 @@
+# from
+
+[source](https://tenthousandmeters.com/blog/python-behind-the-scenes-1-how-the-cpython-vm-works/)
 # 1. 引入
 
 你是否曾好奇，运行一个程序时，python 做了哪些事情？

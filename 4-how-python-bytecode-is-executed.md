@@ -1,3 +1,7 @@
+# from
+
+[source](https://tenthousandmeters.com/blog/python-behind-the-scenes-4-how-python-bytecode-is-executed/)
+
 本次讨论的目的是了解 CPython 如何执行我们告诉它要执行的字节代码，即它如何执行我们编写的代码编译的字节代码。
 
 注意：在这篇文章中，我指的是CPython 3.9。随着 CPython 的发展，一些实施细节肯定会发生变化。我将尝试跟踪重要更改并添加更新说明。
