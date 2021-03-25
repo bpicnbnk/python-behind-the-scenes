@@ -105,7 +105,7 @@ struct _typeobject {
 };
 ```
 
-类型的成员称为插槽。每个插槽负责对象行为的特定方面。例如，类型的tp_call插槽指定了当我们调用类型的对象时会发生什么。有些插槽被组合在一起的套件。套件的一个例子是"number"套件tp_as_number。上次我们研究了它的nb_add插槽，其中指定了如何添加对象。这和所有其他插槽在[文档](https://docs.python.org/3/c-api/typeobj.html)中描述得很好。
+**类型的成员称为插槽**。每个插槽负责对象行为的特定方面。例如，类型的tp_call插槽指定了当我们调用类型的对象时会发生什么。有些插槽被组合在一起的套件。套件的一个例子是"number"套件tp_as_number。上次我们研究了它的nb_add插槽，其中指定了如何添加对象。这和所有其他插槽在[文档](https://docs.python.org/3/c-api/typeobj.html)中描述得很好。
 
 如何设置类型插槽取决于如何定义类型。定义 CPython 中的类型有两种方法：
 
@@ -408,17 +408,56 @@ $ python -q
 
 实例变量存储在对象的字典中，类型变量存储在类型的字典和类型父母的字典中。要设置某个值的属性，CPython 只需更新对象的字典。为了获得属性的价值，CPython 首先在对象的字典中搜索它，然后在类型的字典和类型父母的字典中搜索它。CPython 在搜索值时对类型进行重复的顺序是方法解决顺序（MRO）。
 
-如果没有描述符，Python 属性将如此简单。
+如果没有描述器，Python 属性将如此简单。
 
-## 描述符
+## 描述器 from doc
 
-从技术上讲，描述符是 Python 对象，其类型实现某些插槽tp_descr_get或tp_descr_set或两者兼而有之。从本质上讲，描述符是 Python 对象，当用作属性时，它会控制我们获取、设置或删除它所发生的情况。如果PyObject_GenericGetAttr()发现属性值是其类型实现tp_descr_get的描述符，它不仅会按正常方式返回值，还会调用tp_descr_get并返回此调用的结果。tp_descr_get插槽需要三个参数：描述符本身、被查找属性的对象和对象的类型。它由tp_descr_get决定如何处理参数和返回什么。同样，PyObject_GenericSetAttr()查找当前属性值。如果它发现值是其类型实现tp_descr_set的描述符，它调用tp_descr_set代替只更新对象的字典。传递给tp_descr_set的参数是描述符、对象和新的属性值。要删除属性，PyObject_GenericSetAttr()调用tp_descr_set将新属性值设置为NULL。
+[描述器](https://docs.python.org/zh-cn/3/howto/descriptor.html) 让对象能够自定义属性查找、存储和删除的操作。
 
-一方面，描述符使 Python 属性变得有点复杂。另一方面，描述符使 Python 属性变得强大。正如Python的术语表[所说](https://docs.python.org/3/glossary.html#term-descriptor)，
+要使用描述器，它必须作为一个类变量存储在另一个类中。
 
-- 理解描述符是深入理解 Python 的关键，因为它们是许多函数的基础，包括函数、方法、属性、类方法、静态方法和超级类的引用。
+### 动态查找
+有趣的描述器通常运行计算而不是返回常量：
+```python
+import os
 
-让我们修改我们在上一部分讨论的描述符的一个重要使用案例：方法。
+class DirectorySize:
+
+    def __get__(self, obj, objtype=None):
+        return len(os.listdir(obj.dirname))
+
+class Directory:
+
+    size = DirectorySize()              # Descriptor instance
+
+    def __init__(self, dirname):
+        self.dirname = dirname          # Regular instance attribute
+```
+
+交互式会话显示查找是动态的，每次都会计算不同的，经过更新的返回值:
+
+```python
+>>> s = Directory('songs')
+>>> g = Directory('games')
+>>> s.size                              # The songs directory has twenty files
+20
+>>> g.size                              # The games directory has three files
+3
+>>> open('games/newfile').close()       # Add a fourth file to the directory
+>>> g.size                              # File count is automatically updated
+4
+```
+
+除了说明描述器如何运行计算，这个例子也揭示了 `__get__()` 参数的目的。形参 self 接收的实参是 size，即 DirectorySize 的一个实例。形参 obj 接收的实参是 g 或 s，即 Directory 的一个实例。而正是 obj 让 __get__() 方法获得了作为目标的目录。形参 objtype 接收的实参是 Directory 类。
+## 描述器
+
+从技术上讲，描述器是 Python 对象，此对象的类型实现了插槽tp_descr_get或tp_descr_set或两者兼而有之。从本质上讲，描述器是 Python 对象，当用作属性时，它会控制我们获取、设置或删除它所发生的情况。如果PyObject_GenericGetAttr()发现属性值是其类型实现tp_descr_get的描述器，它不仅会按正常方式返回值，还会调用tp_descr_get并返回此调用的结果。tp_descr_get插槽需要三个参数：描述器本身、被查找属性的对象和对象的类型。它由tp_descr_get决定如何处理参数和返回什么。同样，PyObject_GenericSetAttr()查找当前属性值。如果它发现值是其类型实现tp_descr_set的描述器，它调用tp_descr_set代替只更新对象的字典。传递给tp_descr_set的参数是描述器、对象和新的属性值。要删除属性，PyObject_GenericSetAttr()调用tp_descr_set将新属性值设置为NULL。
+
+一方面，描述器使 Python 属性变得有点复杂。另一方面，描述器使 Python 属性变得强大。正如Python的术语表[所说](https://docs.python.org/3/glossary.html#term-descriptor)，
+
+- 理解描述器是深入理解 Python 的关键，因为它们是许多函数的基础，包括函数、方法、属性、类方法、静态方法和超级类的引用。
+
+让我们修改我们在上一部分讨论的描述器的一个重要使用案例：方法。
 
 放入类型字典中的函数不是像普通函数，而是像一种方法。即，当我们调用时，我们不需要显示传递第一个参数：
 ```shell
@@ -439,18 +478,18 @@ $ python -q
 <function <lambda> at 0x108a4ca60> 
 ```
 
-CPython返回的不是字典中存储的价值，而是其他东西。这是因为函数是描述符。function类型实现插槽`tp_descr_get`，因此`PyObject_GenericGetAttr()`调用此插槽并返回调用结果。调用的结果是存储函数和实例的方法对象。当我们调用一个方法对象时，实例被预先依赖到参数列表中，并且函数被调用。
+CPython返回的不是字典中存储的价值，而是其他东西。这是因为函数是描述器。function类型实现插槽`tp_descr_get`，因此`PyObject_GenericGetAttr()`调用此插槽并返回调用结果。调用的结果是存储函数和实例的方法对象。当我们调用一个方法对象时，实例被预先依赖到参数列表中，并且函数被调用。
 
-描述符只有在用作类型变量时才会具有其特殊行为。当它们被用作实例变量时，它们的行为就像普通对象一样。例如，放置在对象字典中的函数不会成为一种方法：
+描述器只有在用作类型变量时才会具有其特殊行为。当它们被用作实例变量时，它们的行为就像普通对象一样。例如，放置在对象字典中的函数不会成为一种方法：
 ```shell
 >>> a.g = lambda self: self
 >>> a.g
 <function <lambda> at 0x108a4cc10>
 ```
 
-显然，语言设计人员在没有发现将描述符用作实例变量的好案例。这一决定的一个很好的结果是实例变量非常简单。它们只是数据。
+显然，语言设计人员在没有发现将描述器用作实例变量的好案例。这一决定的一个很好的结果是实例变量非常简单。它们只是数据。
 
-function类型是内置描述符类型的示例。我们还可以定义我们自己的描述符。为此，我们创建了一个实现`__get__()`,`__set__()`,`__delete__()`描述符协议的类：
+function类型是内置描述器类型的示例。我们还可以定义我们自己的描述器。为此，我们创建了一个实现`__get__()`,`__set__()`,`__delete__()`描述器协议的类：
 ```python
 >>> class DescrClass:
 ...     def __get__(self, obj, type=None):
@@ -467,7 +506,7 @@ I can do anything
 
 如果你想知道为什么有人会想要在首位定义他们的描述，看看[Descriptor HowTo Guide](https://docs.python.org/3/howto/descriptor.html#id1)。
 
-我们的目标是研究获取和设置属性的实际算法。描述符是其中的一个先决条件。另一个是了解对象的字典和类型的字典到底是什么。
+我们的目标是研究获取和设置属性的实际算法。描述器是其中的一个先决条件。另一个是了解对象的字典和类型的字典到底是什么。
 
 # 对象字典和类型字典
 对象字典是存储实例变量的字典。每个类型的对象都保留一个指向自己的字典的指针。例如，每个函数对象都有func_dict成员：
@@ -506,7 +545,7 @@ AttributeError: 'int' object has no attribute '__dict__'
 
 类型字典是类型对象的字典。就像函数的`func_dict`成员指向函数的字典一样，类型`tp_dict`插槽指向类型的字典。普通对象字典和类型词典之间的关键区别是CPython知道`tp_dict`，所以它可以避免通过`tp_dictoffset`定位类型字典。以一般方式处理一种类型的字典将引入额外的间接层，不会带来太大的好处。
 
-现在，当我们知道描述符是什么以及属性存储在哪里时，我们准备查看函数`PyObject_GenericGetAttr()`和函数`PyObject_GenericSetAttr()`的作用。
+现在，当我们知道描述器是什么以及属性存储在哪里时，我们准备查看函数`PyObject_GenericGetAttr()`和函数`PyObject_GenericSetAttr()`的作用。
 
 ## PyObject_GenericSetAttr()
 
@@ -600,10 +639,10 @@ _PyObject_GenericSetAttrWithDict(PyObject *obj, PyObject *name,
 尽管函数很长，函数实现了一个简单的算法：
 
 1. 在类型变量中搜索属性值。搜索的顺序是 MRO。
-2. 如果值是其类型实现插槽`tp_descr_set`的描述符，调用插槽。
+2. 如果值是其类型实现插槽`tp_descr_set`的描述器，调用插槽。
 3. 否则，使用新值更新对象字典。
 
-我们尚未讨论实现插槽`tp_descr_set`的描述符类型，因此您可能想知道为什么我们需要它们。考虑 Python 的[`property()`](https://docs.python.org/3/library/functions.html#property)。文档中的以下示例演示了其创建管理属性的规范用途：
+我们尚未讨论实现插槽`tp_descr_set`的描述器类型，因此您可能想知道为什么我们需要它们。考虑 Python 的[`property()`](https://docs.python.org/3/library/functions.html#property)。文档中的以下示例演示了其创建管理属性的规范用途：
 ```python
 class C:
     def __init__(self):
@@ -623,7 +662,7 @@ class C:
 
 如果c是C的实例，`c.x`将调用获取器，`c.x = value`将调用设置器和`del c.x`将调用删除器。
 
-`property()`工作原理如何？答案很简单：它是一种描述符类型。它同时实现调用指定函数的插槽tp_descr_get和插槽tp_descr_set。
+`property()`工作原理如何？答案很简单：它是一种描述器类型。它同时实现调用指定函数的插槽tp_descr_get和插槽tp_descr_set。
 
 文档中的示例只是一个框架，没有做太多工作。但是，它可以很容易地扩展，以做一些有用的事情。例如，我们可以编写一个设置器，执行对新属性值的某些验证。
 
@@ -769,18 +808,18 @@ _PyObject_GenericGetAttrWithDict(PyObject *obj, PyObject *name,
 此算法的主要步骤是：
 
 1. 在类型变量中搜索属性值。搜索的顺序是 MRO。
-2. 如果值是其类型实现tp_descr_get插槽的数据描述符，调用此插槽并返回调用结果。否则，记住值并继续。数据描述符是其类型实现tp_descr_set插槽的描述符。
+2. 如果值是其类型实现tp_descr_get插槽的数据描述器，调用此插槽并返回调用结果。否则，记住值并继续。数据描述器是其类型实现tp_descr_set插槽的描述器。
 3. 使用tp_dictoffset定位对象字典。如果字典包含值，则返回它。
-4. 如果步骤 2 的值是其类型实现tp_descr_get插槽的描述符，调用此插槽并返回调用结果。
+4. 如果步骤 2 的值是其类型实现tp_descr_get插槽的描述器，调用此插槽并返回调用结果。
 5. 从第 2 步返回值。值可以是`NULL`。
 
 由于属性可以是实例变量和类型变量，CPython 必须决定哪个属性优先于另一个属性。算法所做的本质上是实现某种优先顺序。此顺序是：
 
-1. 类型数据描述符
+1. 类型数据描述器
 2. 实例变量
-3. 类型非数据描述符和其他类型变量。
+3. 类型非数据描述器和其他类型变量。
 
-自然要问的问题是：为什么它要执行这个特殊的顺序？更具体地说，为什么数据描述符优先于实例变量，而非数据描述符不优先于实例变量？首先，请注意，某些描述符必须优先于实例变量，以便属性能够按预期工作。这样描述符的一个示例是对象的`__dict__`属性。您不会在对象的字典中找到它，因为它是存储在类型字典中的数据描述符：
+自然要问的问题是：为什么它要执行这个特殊的顺序？更具体地说，为什么数据描述器优先于实例变量，而非数据描述器不优先于实例变量？首先，请注意，某些描述器必须优先于实例变量，以便属性能够按预期工作。这样描述器的一个示例是对象的`__dict__`属性。您不会在对象的字典中找到它，因为它是存储在类型字典中的数据描述器：
 ```python
 >>> a.__dict__['__dict__']
 Traceback (most recent call last):
@@ -792,24 +831,24 @@ KeyError: '__dict__'
 True
 ```
 
-此描述符的`tp_descr_get`插槽返回位于`tp_dictoffset`的对象字典。现在假设数据描述符不优先于实例变量。如果我们把`'__dict__'`放在对象的字典里，并分配给它一些其他字典会发生什么：
+此描述器的`tp_descr_get`插槽返回位于`tp_dictoffset`的对象字典。现在假设数据描述器不优先于实例变量。如果我们把`'__dict__'`放在对象的字典里，并分配给它一些其他字典会发生什么：
 ```python
 >>> a.__dict__['__dict__'] = {}
 ```
 
-`a.__dict__`属性返回的不是对象的字典，而是我们分配的字典！对于依赖`__dict__`的对象来说，这是完全出乎意料的。幸运的是，数据描述符确实优先于实例变量，因此我们得到了对象的字典：
+`a.__dict__`属性返回的不是对象的字典，而是我们分配的字典！对于依赖`__dict__`的对象来说，这是完全出乎意料的。幸运的是，数据描述器确实优先于实例变量，因此我们得到了对象的字典：
 ```python
 >>> a.__dict__
 {'x': 'instance attribute', 'g': <function <lambda> at 0x108a4cc10>, '__dict__': {}}
 ```
 
-非数据描述符不优先于实例变量，因此大多数时间实例变量比类型变量具有优先级。当然，现有的优先顺序是众多设计选择之一。吉多·范·罗森在[PEP 252](https://www.python.org/dev/peps/pep-0252/)中解释了其背后的原因：
+非数据描述器不优先于实例变量，因此大多数时间实例变量比类型变量具有优先级。当然，现有的优先顺序是众多设计选择之一。吉多·范·罗森在[PEP 252](https://www.python.org/dev/peps/pep-0252/)中解释了其背后的原因：
 
 - 在较复杂的案例中，实例字典中存储的名称与类型字典中存储的名称之间存在冲突。如果两个字典都有相同的条目，我们应返回哪一个？看着经典的 Python 指导， 我发现相互矛盾的规则： 对于类实例， 实例字典覆盖类字典，除了特殊属性 （如`__dict__`和`__class__`）， 它们优先于实例字典。
 
 - 我通过以下一组规则解决了这个问题，其实现于`PyObject_GenericGetAttr()`：...
 
-为什么`__dict__`属性首先作为描述符实现？使其成为实例变量将导致相同的问题。有可能覆盖`__dict__`属性，几乎没有人希望有这种可能性。
+为什么`__dict__`属性首先作为描述器实现？使其成为实例变量将导致相同的问题。有可能覆盖`__dict__`属性，几乎没有人希望有这种可能性。
 
 我们已经了解了普通对象的属性是如何工作的。现在让我们看看类型属性的工作原理。
 
@@ -997,13 +1036,13 @@ type_getattro(PyTypeObject *type, PyObject *name)
 
 - 它通过`tp_dict`获取类型字典。通用实现尝试使用元型的`tp_dictoffset`来定位它。
 - 它不仅在类型字典中搜索类型变量，而且在类型父母的字典中搜索类型变量。通用实现将处理一种类型，如没有继承概念的普通对象。
-- 它支持类型描述符。通用实现将仅支持元类描述符。
+- 它支持类型描述器。通用实现将仅支持元类描述器。
 
 因此，我们有以下优先顺序：
 
-1. 元类数据描述符
-2. 类型描述符和其他类型变量
-3. 元类非数据描述符和其他元型变量。
+1. 元类数据描述器
+2. 类型描述器和其他类型变量
+3. 元类非数据描述器和其他元型变量。
 
 这就是`type`实现`tp_getattro`和`tp_setattro`插槽的方式。由于`type`默认情况下是所有内置类型的元类和所有类别的元类，大多数类型的属性根据此实现工作。正如我们已经说过的，类本身默认使用通用实现。如果我们想要更改类实例属性的行为或类属性的行为，我们需要定义使用自定义实现的新类或新元类。Python 提供了一个简单的方法来做到这一点。
 
@@ -1127,7 +1166,7 @@ class IMAP4:
 
 # 加载方法
 
-我们看到函数对象是将方法对象绑定到实例时返回方法对象的描述符：
+我们看到函数对象是将方法对象绑定到实例时返回方法对象的描述器：
 ```python
 >>> a.f
 <bound method <lambda> of <__main__.A object at 0x108a20d60>>
@@ -1144,7 +1183,7 @@ $ echo 'obj.method()' | python -m dis
 ...
 ```
 
-当 VM 执行`LOAD_METHOD`opcode时，它会调用函数`_PyObject_GetMethod()`来搜索属性值。此函数的工作原理与通用函数类似。唯一的区别是，它检查值是否是未绑定的方法，比如一种能够返回与实例绑定的方法对象的描述符。在这种情况下，它不调用描述符类型的插槽`tp_descr_get`，而是返回描述符本身。例如，如果属性值是一个函数，`_PyObject_GetMethod()`则返回函数。function和其他描述符类型，其对象表现为未绑定方法，在他们的tp_flags中指定[Py_TPFLAGS_METHOD_DESCRIPTOR](https://www.python.org/dev/peps/pep-0590/#descriptor-behavior)标志，因此很容易识别它们。
+当 VM 执行`LOAD_METHOD`opcode时，它会调用函数`_PyObject_GetMethod()`来搜索属性值。此函数的工作原理与通用函数类似。唯一的区别是，它检查值是否是未绑定的方法，比如一种能够返回与实例绑定的方法对象的描述器。在这种情况下，它不调用描述器类型的插槽`tp_descr_get`，而是返回描述器本身。例如，如果属性值是一个函数，`_PyObject_GetMethod()`则返回函数。function和其他描述器类型，其对象表现为未绑定方法，在他们的tp_flags中指定[Py_TPFLAGS_METHOD_DESCRIPTOR](https://www.python.org/dev/peps/pep-0590/#descriptor-behavior)标志，因此很容易识别它们。
 
 需要注意的是，只有当对象的类型使用`tp_getattro`的通用实现时，`_PyObject_GetMethod()`才能按照上述描述运行。否则，它只是调用自定义实现，不执行任何检查。
 
@@ -1212,9 +1251,9 @@ static PyMethodDef object_methods[] = {
 };
 ```
 
-添加到字典中的可调用对象通常是一个方法描述符。我们也许应用另一篇文章讨论 Python 可调用物中的方法描述符是什么，其本质上是一个行为像函数对象的对象，即它与实例结合的对象。主要区别在于，与实例绑定的函数返回一个方法对象，一个与实例绑定的方法描述符返回一个内置方法对象。方法对象封装 Python 函数和实例，内置方法对象封装 C 函数和实例。
+添加到字典中的可调用对象通常是一个方法描述器。我们也许应用另一篇文章讨论 Python 可调用物中的方法描述器是什么，其本质上是一个行为像函数对象的对象，即它与实例结合的对象。主要区别在于，与实例绑定的函数返回一个方法对象，一个与实例绑定的方法描述器返回一个内置方法对象。方法对象封装 Python 函数和实例，内置方法对象封装 C 函数和实例。
 
-例如，`object.__dir__`是一个方法描述符：
+例如，`object.__dir__`是一个方法描述器：
 ```python
 >>> object.__dir__
 <method '__dir__' of 'object' objects>
@@ -1230,7 +1269,7 @@ static PyMethodDef object_methods[] = {
 <class 'builtin_function_or_method'>
 ```
 
-如果`ml_flags`标志指定方法是静态的，则立即在字典中添加内置方法对象，而不是方法描述符。
+如果`ml_flags`标志指定方法是静态的，则立即在字典中添加内置方法对象，而不是方法描述器。
 
 任何内置类型的每个方法要么包装一些插槽，要么根据`tp_methods`被添加到字典。
 
@@ -1249,7 +1288,7 @@ typedef struct PyMemberDef {
 
 成员由 offset指定。其类型由type指定。
 
-对于tp_members的每个结构，PyType_Ready()在类型字典中添加一个成员描述符。成员描述符是一个封装PyMemberDef的数据描述符。其`tp_descr_get`插槽拿到实例，找到位于offset的实例的成员，将其转换为相应的 Python 对象并返回对象。其tp_descr_set插槽拿到实例和值，找到位于offset实例成员，并将其设置为对应值。成员只能通过指定flags设置只读。
+对于tp_members的每个结构，PyType_Ready()在类型字典中添加一个成员描述器。成员描述器是一个封装PyMemberDef的数据描述器。其`tp_descr_get`插槽拿到实例，找到位于offset的实例的成员，将其转换为相应的 Python 对象并返回对象。其tp_descr_set插槽拿到实例和值，找到位于offset实例成员，并将其设置为对应值。成员只能通过指定flags设置只读。
 
 例如，通过这一机制，type定义了`__dictoffset__`和其他成员：
 ```c
@@ -1269,7 +1308,7 @@ static PyMemberDef type_members[] = {
 
 ## tp_getset
 
-插槽tp_getset是PyGetSetDef结构的数组，此结构可以像property()一样描述任意数据描述符：
+插槽tp_getset是PyGetSetDef结构的数组，此结构可以像property()一样描述任意数据描述器：
 ```c
 typedef struct PyGetSetDef {
     const char *name;
@@ -1280,7 +1319,7 @@ typedef struct PyGetSetDef {
 } PyGetSetDef;
 ```
 
-对于tp_getset的每个结构，PyType_Ready()在类型的字典中添加一个getset描述符。getset描述符的tp_descr_get插槽调用指定的get函数，tp_descr_set插槽调用指定的set函数。
+对于tp_getset的每个结构，PyType_Ready()在类型的字典中添加一个getset描述器。getset描述器的tp_descr_get插槽调用指定的get函数，tp_descr_set插槽调用指定的set函数。
 
 类型使用此机制定义`__dict__`属性。例如，`function`类型是如何处理的：
 ```c
@@ -1299,7 +1338,7 @@ static PyGetSetDef func_getsetlist[] = {
 };
 ```
 
-`__dict__`属性不是作为仅读成员描述符实现的，而是作为 geteset 描述符实现的，因为它不仅仅是返回位于tp_dictoffset的字典。例如，如果字典尚不存在，则描述符会创建字典。
+`__dict__`属性不是作为仅读成员描述器实现的，而是作为 geteset 描述器实现的，因为它不仅仅是返回位于tp_dictoffset的字典。例如，如果字典尚不存在，则描述器会创建字典。
 
 类也通过此机制获得`__dict__`属性。创建类的type_new()函数在调用`PyType_Ready()`之前指定tp_getset。然而，有些类没有得到这个属性，因为他们的实例没有字典。这些是定义`__slots__`的类。
 
@@ -1329,7 +1368,7 @@ However, the attributes listed in `__slots__` work fine:
 4
 ```
 
-这怎么可能？`__slots__`所列属性成为类实例的成员。对于每个成员，成员描述符将添加到类字典中。`type_new()`函数指定`tp_members`这样做。
+这怎么可能？`__slots__`所列属性成为类实例的成员。对于每个成员，成员描述器将添加到类字典中。`type_new()`函数指定`tp_members`这样做。
 ```python
 >>> D.x
 <member 'x' of 'D' objects>
@@ -1349,7 +1388,7 @@ However, the attributes listed in `__slots__` work fine:
 2. type所使用的实现
 3. 定义`__getattribute__()`,`__getattr__()`,`__setattr__()`、和`__delattr__()`特殊方法的类所使用的实现。
 
-一旦您了解了什么是描述符，通用的实现就简单了。简而言之，描述符是能够控制属性访问、分配和删除的属性。它们允许 CPython 实现许多特性，包括方法和属性。
+一旦您了解了什么是描述器，通用的实现就简单了。简而言之，描述器是能够控制属性访问、分配和删除的属性。它们允许 CPython 实现许多特性，包括方法和属性。
 
 内置类型使用三种机制定义属性：
 
@@ -1357,4 +1396,4 @@ However, the attributes listed in `__slots__` work fine:
 - tp_members;和
 - tp_getset.
 
-类还使用这些机制来定义某些属性。例如，`__dict__`定义为getset 描述符，`__slots__`列出的属性被定义为成员描述符。
+类还使用这些机制来定义某些属性。例如，`__dict__`定义为getset 描述器，`__slots__`列出的属性被定义为成员描述器。
